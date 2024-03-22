@@ -2019,12 +2019,8 @@ TEST_F(TextFormatParserTest, InvalidFieldName) {
 }
 
 TEST_F(TextFormatParserTest, InvalidCapitalization) {
-  // We require that group names be exactly as they appear in the .proto.
-  ExpectFailure(
-      "optionalgroup {\na: 15\n}\n",
-      "Message type \"protobuf_unittest.TestAllTypes\" has no field named "
-      "\"optionalgroup\".",
-      1, 15);
+  // We require that group names be exactly as they appear in the .proto
+  // OR match the field name. No other case is allowed.
   ExpectFailure(
       "OPTIONALgroup {\na: 15\n}\n",
       "Message type \"protobuf_unittest.TestAllTypes\" has no field named "

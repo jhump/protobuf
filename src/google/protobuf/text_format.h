@@ -228,6 +228,8 @@ class PROTOBUF_EXPORT TextFormat {
     virtual void PrintMessageEnd(const Message& message, int field_index,
                                  int field_count, bool single_line_mode,
                                  BaseTextGenerator* generator) const;
+  private:
+    bool LooksLikeProto2Group(const FieldDescriptor* field) const;
   };
 
   // Deprecated: please use FastFieldValuePrinter instead.

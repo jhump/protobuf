@@ -593,14 +593,23 @@ class TextFormat::Parser::ParserImpl {
           field = descriptor->FindFieldByName(lower_field_name);
           // If the case-insensitive match worked but the field is NOT a group,
           if (field != nullptr &&
-              field->type() != FieldDescriptor::TYPE_GROUP) {
+              (field->type() != FieldDescriptor::TYPE_GROUP ||
+              field->message_type()->name() != field_name)) {
             field = nullptr;
+          } else if (field == nullptr) {
+            // With editions, the field name might NOT be the lower-case version
+            // of the type name. So we need to look for the field based on its
+            // type name. Note: this is problematic if more than one field
+            // references the same type and uses delimited encoding.
+            for (int i = 0; i < descriptor->field_count(); i++) {
+              auto candidate = descriptor->field(i);
+              if (candidate->type() == FieldDescriptor::TYPE_GROUP
+                  && candidate->message_type()->name() == field_name) {
+                field = candidate;
+                break;
+              }
+            }
           }
-        }
-        // Again, special-case group names as described above.
-        if (field != nullptr && field->type() == FieldDescriptor::TYPE_GROUP &&
-            field->message_type()->name() != field_name) {
-          field = nullptr;
         }
 
         if (field == nullptr && allow_case_insensitive_field_) {
@@ -2062,8 +2071,10 @@ void TextFormat::FastFieldValuePrinter::PrintFieldName(
     generator->PrintLiteral("[");
     generator->PrintString(field->PrintableNameForExtension());
     generator->PrintLiteral("]");
-  } else if (field->type() == FieldDescriptor::TYPE_GROUP) {
-    // Groups must be serialized with their original capitalization.
+  } else if (LooksLikeProto2Group(field)) {
+    // Proto2 groups must be serialized with their original capitalization
+    // Delimited message fields in editions should be serialized the same
+    // way to be compatible with equivalent proto2 schemas.
     generator->PrintString(field->message_type()->name());
   } else {
     generator->PrintString(field->name());
@@ -2091,6 +2102,28 @@ void TextFormat::FastFieldValuePrinter::PrintMessageEnd(
   } else {
     generator->PrintLiteral("}\n");
   }
+}
+bool TextFormat::FastFieldValuePrinter::LooksLikeProto2Group(
+    const FieldDescriptor* field) const {
+  // Make sure it's a group.
+  if (field->type() != FieldDescriptor::TYPE_GROUP) {
+    return false;
+  }
+  // The field name should be the lower-case form of the
+  // message type's name.
+  std::string lower_type_name = field->message_type()->name();
+  absl::AsciiStrToLower(&lower_type_name);
+  if (field->name() != lower_type_name) {
+    return false;
+  }
+  // Finally, make sure they are in the same scope.
+  if (field->is_extension()) {
+    if (field->extension_scope() != nullptr) {
+      return field->extension_scope() == field->message_type()->containing_type();
+    }
+    return field->message_type()->containing_type() == nullptr && field->file() == field->message_type()->file();
+  }
+  return field->containing_type() == field->message_type()->containing_type();
 }
 
 namespace {
